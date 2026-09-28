@@ -248,6 +248,9 @@ class RadarInterface(RadarInterfaceBase):
       # Parse track data
       self.pts[i].dRel = msg_a['LongDist']
       self.pts[i].yRel = msg_a['LatDist'] + self.radar_offset
+      if nap_conf is not None and getattr(nap_conf, 'radar_upside_down', False):
+        self.pts[i].yRel = -self.pts[i].yRel
+
       self.pts[i].vRel = msg_a['LongSpeed']
       self.pts[i].aRel = msg_a['LongAccel']
       self.pts[i].yvRel = msg_b['LatSpeed']
@@ -272,9 +275,13 @@ class RadarInterface(RadarInterfaceBase):
     if msg_a["LongDist"] > 250.0 or msg_a["LongDist"] <= 0 or msg_a["ProbExist"] < 50.0:
       return None
 
+    y_rel = msg_a['LatDist'] + self.radar_offset
+    if nap_conf is not None and getattr(nap_conf, 'radar_upside_down', False):
+      y_rel = -y_rel
+
     return BoschTrackObservation(
       d_rel=msg_a['LongDist'],
-      y_rel=msg_a['LatDist'] + self.radar_offset,
+      y_rel=y_rel,
       v_rel=msg_a['LongSpeed'],
       a_rel=msg_a['LongAccel'],
       yv_rel=msg_b['LatSpeed'],

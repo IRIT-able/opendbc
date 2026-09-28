@@ -337,6 +337,14 @@ class NAPConf:
   def radar_offset(self, value):
     self._put_param_float(NAPParamKeys.RADAR_OFFSET, 'radar_offset', value)
 
+
+  @property
+  def radar_upside_down(self):
+    return self._get('radar_upside_down', False)
+
+  @radar_upside_down.setter
+  def radar_upside_down(self, value):
+    self._put('radar_upside_down', bool(value))
   @property
   def pedal_calib_min(self):
     return self._get_param_float(NAPParamKeys.PEDAL_CALIB_MIN, 'pedal_calib_min', -3.0)
