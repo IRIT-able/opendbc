@@ -222,6 +222,7 @@ struct CarState {
   pedalAuthorityFailed @77 :Bool;  # NAP: bounded pedal authority acquisition failed
   enableLongControl @78 :Bool;  # Pre-AP: FSM longitudinal intent; survives gas override
   napStalkFollowDistance @79 :UInt8;  # NAP: physical STW DTR; 0=unavailable/SNA, 1..7
+  napHighBeamStalk @80 :UInt8;
 
   # cruise state
   cruiseState @10 :CruiseState;

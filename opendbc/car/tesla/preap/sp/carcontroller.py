@@ -9,6 +9,10 @@ from opendbc.car.tesla.preap.stock_cc_spoofer import StockCCSpoofer
 from opendbc.car.tesla.values import CANBUS, CarControllerParams
 from opendbc.car.vehicle_model import VehicleModel
 
+try:
+  from cereal import messaging
+except ImportError:
+  messaging = None
 
 class PreAPCarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
@@ -29,6 +33,10 @@ class PreAPCarController(CarControllerBase):
     self.stock_cc = StockCCSpoofer()
     self.tesla_can = init_preap_can(dbc_names, self.packers)
     self.radar_vin_idx = 0
+    
+    self.sm = messaging.SubMaster(['deviceState']) if messaging else None
+    self.high_beam_state = False
+    self.auto_brights_enabled = False
 
     from opendbc.car.tesla.interface import CarInterface
     # Same CarSpecs as NAP's HW3 VehicleModel; PREAP is the wired candidate.
@@ -39,6 +47,9 @@ class PreAPCarController(CarControllerBase):
     actuators = CC.actuators
     can_sends = []
 
+    if self.sm is not None:
+      self.sm.update(0)
+      
     # MADS drives CC.latActive on sunnypilot (controlsd_ext.get_lat_active).
     # Do not consult CS.cruiseEnabled for steer TX.
     lat_active = CC.latActive and CS.hands_on_level < self._hands_on_disengage_level
@@ -87,10 +98,44 @@ class PreAPCarController(CarControllerBase):
     # (so the blinker stops automatically when the maneuver completes).
     # turn: 0=none, 1=left, 2=right. Pre-AP has no AP ECU, so openpilot is the
     # sole source of DAS_bodyControls.
+    
+    # Auto Brights logic
+    stalk = getattr(CS.out, "napHighBeamStalk", 0)
+    
+    # 2 is pushed forward (Auto), 1 is pulled back (Flash), 0 is off
+    if stalk == 1:
+      self.high_beam_state = True
+      self.auto_brights_enabled = False
+    elif stalk == 2:
+      self.auto_brights_enabled = True
+    else:
+      self.auto_brights_enabled = False
+      self.high_beam_state = False
+      
+    if self.auto_brights_enabled and self.sm is not None:
+      light_sensor = self.sm['deviceState'].lightSensor
+      # extremely simple threshold, tune as needed.
+      is_dark = light_sensor < 100
+      no_lead = not CC.hudControl.leadVisible
+      moving_fast = CS.out.vEgo > 10.0 # 22 mph
+      
+      if is_dark and no_lead and moving_fast:
+        self.high_beam_state = True
+      elif CS.out.vEgo < 5.0 or not is_dark or not no_lead:
+        self.high_beam_state = False
+        
     if self.frame % 10 == 0:
       turn = int(CC.rightBlinker) * 2 + int(CC.leftBlinker)
       cntr = (self.frame // 10) % 16
-      can_sends.append(self.tesla_can.create_body_controls_message(turn, 0, CANBUS.party, cntr))
+      
+      # If stalk is 2, and we are not forcing it, or we are forcing it
+      # Or if auto brights is disabled, we just send False or True.
+      # Wait, if we send None, create_body_controls_message will send 0.
+      send_hb = self.high_beam_state
+      # If stalk == 0, we could send None to let car decide, but car doesn't have auto brights.
+      # We just send send_hb
+      
+      can_sends.append(self.tesla_can.create_body_controls_message(turn, 0, send_hb, CANBUS.party, cntr))
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = self.apply_angle_last

@@ -177,6 +177,7 @@ def update_preap(cs, can_parsers):
   # lever level so modeld can reliably detect new taps from conflated carState.
   turn_lever = int(cp_chassis.vl["STW_ACTN_RQ"]["TurnIndLvr_Stat"])
   ret.turnSignalStalkState = 0 if turn_lever == 3 else turn_lever
+  ret.napHighBeamStalk = int(cp_chassis.vl["STW_ACTN_RQ"]["HiBmLvr_Stat"])
 
   can_engage = cs.engagement.check_can_engage(ret.doorOpen, ret.gearShifter, ret.seatbeltUnlatched)
   ret.cruiseState.enabled = cs.engagement.cruiseEnabled and can_engage

@@ -11,34 +11,34 @@ def _tc():
 
 def test_addr_is_body_controls():
   tc = _tc()
-  addr, _, _ = tc.create_body_controls_message(1, 0, CANBUS.party, 1)
+  addr, _, _ = tc.create_body_controls_message(1, 0, False, CANBUS.party, 1)
   assert addr == 0x3E9  # DAS_bodyControls / 1001
 
 
 def test_turn_left_sets_indicator_left():
   tc = _tc()
-  _, dat, _ = tc.create_body_controls_message(1, 0, CANBUS.party, 1)
+  _, dat, _ = tc.create_body_controls_message(1, 0, False, CANBUS.party, 1)
   # DAS_turnIndicatorRequest is at bit 8 (byte 1, bits 0-1)
   assert dat[1] & 0x03 == 1
 
 
 def test_turn_right_sets_indicator_right():
   tc = _tc()
-  _, dat, _ = tc.create_body_controls_message(2, 0, CANBUS.party, 1)
+  _, dat, _ = tc.create_body_controls_message(2, 0, False, CANBUS.party, 1)
   assert dat[1] & 0x03 == 2
 
 
 def test_turn_none_sets_indicator_none():
   tc = _tc()
-  _, dat, _ = tc.create_body_controls_message(0, 0, CANBUS.party, 1)
+  _, dat, _ = tc.create_body_controls_message(0, 0, False, CANBUS.party, 1)
   assert dat[1] & 0x03 == 0
 
 
 def test_reason_set_when_turning():
   tc = _tc()
   # DAS_turnIndicatorRequestReason at bit 16 (byte 2, bits 0-3)
-  _, dat_on, _ = tc.create_body_controls_message(1, 0, CANBUS.party, 1)
-  _, dat_off, _ = tc.create_body_controls_message(0, 0, CANBUS.party, 1)
+  _, dat_on, _ = tc.create_body_controls_message(1, 0, False, CANBUS.party, 1)
+  _, dat_off, _ = tc.create_body_controls_message(0, 0, False, CANBUS.party, 1)
   assert dat_on[2] & 0x0F == 1
   assert dat_off[2] & 0x0F == 0
 
@@ -52,6 +52,6 @@ def test_turn_value_encoding_matches_cc_convention():
 
 def test_body_controls_frame_addr_and_bus():
   tc = _tc()
-  addr, _, bus = tc.create_body_controls_message(1, 0, CANBUS.party, 3)
+  addr, _, bus = tc.create_body_controls_message(1, 0, False, CANBUS.party, 3)
   assert addr == 0x3E9
   assert bus == CANBUS.party
