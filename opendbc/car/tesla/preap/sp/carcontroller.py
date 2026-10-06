@@ -105,64 +105,11 @@ class PreAPCarController(CarControllerBase):
     self.auto_brights_enabled = False
     self.high_beam_state = False
 
-    if not hasattr(self, "freerun_counter"):
-      self.freerun_counter = -1.0
-
-    if not hasattr(self, "gateway_pll_clock"):
-      self.gateway_pll_clock = 0.0
-      self.last_real_counter = -1
-
     if stalk == 1 and nap_conf.auto_brights:
       # Pushed forward: Armed mode!
+      # We no longer spoof STW_ACTN_RQ here because without a hardware MITM,
+      # CSMA/CD CAN physics guarantees unpredictable arbitration losses and strobing.
       self.auto_brights_enabled = True
-      
-      stw_msg = getattr(CS, "msg_stw_actn_req", None)
-      if stw_msg is not None:
-        jam_msg = dict(stw_msg)
-        jam_msg["HiBmLvr_Stat"] = 0
-        real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
-        
-        # Advance our internal mathematical clock by 1 frame (10ms)
-        self.gateway_pll_clock += 1.0
-        
-        # Phase-Locked Loop (PLL) Hardware Sync
-        if real_counter != self.last_real_counter:
-          # On the very first sync, snap the clock perfectly to 0
-          if self.last_real_counter == -1:
-            self.gateway_pll_clock = 0.0
-          else:
-            # We expect new messages to arrive precisely at multiples of 10 on our clock.
-            error = self.gateway_pll_clock % 10.0
-            if error > 5.0: error -= 10.0
-            
-            # SLOWLY pull our clock towards the hardware phase to absorb wild USB jitter.
-            self.gateway_pll_clock -= (error * 0.1)
-            
-          self.last_real_counter = real_counter
-          
-        # THE INVINCIBLE FILTER: PLL + MINIMAL 2-BURST
-        # By combining the massive stability of the Phase-Locked Loop (which finds the perfect 50ms center)
-        # with the brute-force guarantee of the 2-Burst (which punches through any OS scheduling delays),
-        # we create a spoofing mechanism that can never drift, never trigger ESC faults, and never lose arbitration.
-        
-        # Fire exactly once per 10-frame cycle, when our PLL clock crosses the halfway mark (5.0)
-        current_cycle = int(self.gateway_pll_clock // 10.0)
-        if not hasattr(self, "last_fired_cycle"):
-          self.last_fired_cycle = -1
-          
-        if current_cycle != self.last_fired_cycle and (self.gateway_pll_clock % 10.0) >= 5.0:
-          self.last_fired_cycle = current_cycle
-          preempt_counter = (self.last_real_counter + 1) % 16
-          
-          # Send 2 messages back-to-back to guarantee we conquer any random arbitration collisions
-          for _ in range(2):
-            can_sends.append(self.tesla_can.create_action_request(
-              button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
-              bus=CANBUS.party,
-              counter=preempt_counter,
-              msg_stw=jam_msg
-            ))
-            
     elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
     else:
