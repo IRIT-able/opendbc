@@ -123,25 +123,25 @@ class PreAPCarController(CarControllerBase):
           self.last_real_counter = real_counter
           self.gateway_sync_frame = self.frame
           
-        # The Gateway transmits every 10 frames. We want to preempt it perfectly.
-        # To defeat OS jitter, we don't just send 1 message. 
-        # Right before the Gateway transmits (frame +8 and +9), we send a BURST of 5 messages each!
-        # This creates a 2-3ms "Domination Shield" on the CAN bus.
-        # The Gateway's hardware will lose arbitration against our burst and queue a retry.
-        # By the time our burst finishes and the Gateway succeeds, the BCM has already accepted
-        # our first message and moved its expected counter to N+2. 
-        # The BCM will mathematically drop the Gateway's physical N+1 message!
+        # Hybrid Domination Shield + Continuous Feed
+        # 1. We must constantly feed the BCM at least 1 message per frame to prevent it from timing out.
+        # 2. Right around the expected Gateway transmission (frames 8, 9, 0, 1, 2), we increase to a BURST of 5.
+        # This provides maximum bus domination during the critical window to force the Gateway to retry,
+        # while keeping the BCM's watchdog perfectly happy during the quiet periods.
         frames_since_sync = (self.frame - self.gateway_sync_frame) % 10
+        preempt_counter = (real_counter + 1) % 16
         
-        if frames_since_sync in [8, 9]:
-          preempt_counter = (real_counter + 1) % 16
-          for _ in range(5):
-            can_sends.append(self.tesla_can.create_action_request(
-              button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
-              bus=CANBUS.party,
-              counter=preempt_counter,
-              msg_stw=jam_msg
-            ))
+        num_msgs = 1
+        if frames_since_sync in [8, 9, 0, 1, 2]:
+          num_msgs = 5
+          
+        for _ in range(num_msgs):
+          can_sends.append(self.tesla_can.create_action_request(
+            button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
+            bus=CANBUS.party,
+            counter=preempt_counter,
+            msg_stw=jam_msg
+          ))
     elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
     else:
