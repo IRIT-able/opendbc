@@ -102,18 +102,48 @@ class PreAPCarController(CarControllerBase):
     # Auto Brights logic
     stalk = getattr(CS.out, "napHighBeamStalk", 0)
     
-    # 1 is pushed forward, 2 is pulled back (Flash), 0 is neutral
-    if stalk == 1 or stalk == 2:
-      # Driver manually forced high beams ON (pushed forward or flash)
+    self.auto_brights_enabled = False
+    self.high_beam_state = False
+
+    if not hasattr(self, "last_real_counter"):
+      self.last_real_counter = -1
+      self.gateway_sync_frame = 0
+
+    if stalk == 1 and nap_conf.auto_brights:
+      # Pushed forward: Armed mode!
+      self.auto_brights_enabled = True
+      
+      jam_msg = dict(getattr(CS, "msg_stw_actn_req", {}))
+      if jam_msg:
+        jam_msg["HiBmLvr_Stat"] = 0
+        real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
+        
+        if real_counter != self.last_real_counter:
+          self.last_real_counter = real_counter
+          self.gateway_sync_frame = self.frame
+          
+        # The Gateway transmits every 10 frames. We want to preempt it perfectly.
+        # To defeat OS jitter, we don't just send 1 message. 
+        # Right before the Gateway transmits (frame +8 and +9), we send a BURST of 5 messages each!
+        # This creates a 2-3ms "Domination Shield" on the CAN bus.
+        # The Gateway's hardware will lose arbitration against our burst and queue a retry.
+        # By the time our burst finishes and the Gateway succeeds, the BCM has already accepted
+        # our first message and moved its expected counter to N+2. 
+        # The BCM will mathematically drop the Gateway's physical N+1 message!
+        frames_since_sync = (self.frame - self.gateway_sync_frame) % 10
+        
+        if frames_since_sync in [8, 9]:
+          preempt_counter = (real_counter + 1) % 16
+          for _ in range(5):
+            can_sends.append(self.tesla_can.create_action_request(
+              button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
+              bus=CANBUS.party,
+              counter=preempt_counter,
+              msg_stw=jam_msg
+            ))
+    elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
-      self.auto_brights_enabled = False
     else:
-      # Stalk is in neutral (0)
-      if nap_conf.auto_brights:
-        self.auto_brights_enabled = True
-      else:
-        self.auto_brights_enabled = False
-        self.high_beam_state = False
       
     if self.auto_brights_enabled and self.sm is not None:
       exposure = self.sm['wideRoadCameraState'].exposureValPercent
