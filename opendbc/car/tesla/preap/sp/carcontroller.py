@@ -102,20 +102,18 @@ class PreAPCarController(CarControllerBase):
     # Auto Brights logic
     stalk = getattr(CS.out, "napHighBeamStalk", 0)
     
-    # 1 is pushed forward, 2 is pulled back (Flash), 0 is off
-    if stalk == 2:
+    # 1 is pushed forward, 2 is pulled back (Flash), 0 is neutral
+    if stalk == 1 or stalk == 2:
+      # Driver manually forced high beams ON (pushed forward or flash)
       self.high_beam_state = True
       self.auto_brights_enabled = False
-    elif stalk == 1:
+    else:
+      # Stalk is in neutral (0)
       if nap_conf.auto_brights:
         self.auto_brights_enabled = True
       else:
-        # Native behavior: pushed forward = manual high beams ON
-        self.high_beam_state = True
         self.auto_brights_enabled = False
-    else:
-      self.auto_brights_enabled = False
-      self.high_beam_state = False
+        self.high_beam_state = False
       
     if self.auto_brights_enabled and self.sm is not None:
       exposure = self.sm['wideRoadCameraState'].exposureValPercent
