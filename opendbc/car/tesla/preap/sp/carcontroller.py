@@ -34,7 +34,7 @@ class PreAPCarController(CarControllerBase):
     self.tesla_can = init_preap_can(dbc_names, self.packers)
     self.radar_vin_idx = 0
     
-    self.sm = messaging.SubMaster(['lightSensor']) if messaging else None
+    self.sm = messaging.SubMaster(['wideRoadCameraState']) if messaging else None
     self.high_beam_state = False
     self.auto_brights_enabled = False
 
@@ -118,9 +118,9 @@ class PreAPCarController(CarControllerBase):
       self.high_beam_state = False
       
     if self.auto_brights_enabled and self.sm is not None:
-      light_sensor = self.sm['lightSensor'].light
-      # extremely simple threshold, tune as needed.
-      is_dark = light_sensor < 100
+      exposure = self.sm['wideRoadCameraState'].exposureValPercent
+      # High exposure means the camera is compensating for darkness
+      is_dark = exposure > 50.0
       no_lead = not CC.hudControl.leadVisible
       moving_fast = True # CS.out.vEgo > 10.0 # TEMPORARY: 0 mph for garage testing
       
