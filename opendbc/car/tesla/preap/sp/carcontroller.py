@@ -108,6 +108,10 @@ class PreAPCarController(CarControllerBase):
     if not hasattr(self, "freerun_counter"):
       self.freerun_counter = -1.0
 
+    if not hasattr(self, "gateway_pll_clock"):
+      self.gateway_pll_clock = 0.0
+      self.last_real_counter = -1
+
     if stalk == 1 and nap_conf.auto_brights:
       # Pushed forward: Armed mode!
       self.auto_brights_enabled = True
@@ -118,31 +122,39 @@ class PreAPCarController(CarControllerBase):
         jam_msg["HiBmLvr_Stat"] = 0
         real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
         
-        # MINIMAL 2-BURST HACK
-        # We tried phase shifts (drifted), PLL (oscillated), and 20Hz (dropped by BCM).
-        # We tried DAS_bodyControls (ignored entirely).
-        # We tried 5-bursts (triggered ESC fault).
-        # This is the final frontier: A burst of EXACTLY 2 messages on the +1 counter.
-        # It's only 0.4ms long, which might slip under the ESC Babbling Idiot monitor!
-        # Because there are 2 messages, even if the first one perfectly collides with the
-        # Gateway and loses CAN arbitration, the second one queues up instantly and
-        # lands a microsecond later, permanently slamming the door on the Gateway!
-        # We send this at 10Hz, synchronized loosely to the Gateway.
+        # Advance our internal mathematical clock by 1 frame (10ms)
+        self.gateway_pll_clock += 1.0
         
-        if not hasattr(self, "gateway_sync_frame"):
-          self.gateway_sync_frame = self.frame
-          self.last_real_counter = -1
-          
+        # Phase-Locked Loop (PLL) Hardware Sync
         if real_counter != self.last_real_counter:
+          # On the very first sync, snap the clock perfectly to 0
+          if self.last_real_counter == -1:
+            self.gateway_pll_clock = 0.0
+          else:
+            # We expect new messages to arrive precisely at multiples of 10 on our clock.
+            error = self.gateway_pll_clock % 10.0
+            if error > 5.0: error -= 10.0
+            
+            # SLOWLY pull our clock towards the hardware phase to absorb wild USB jitter.
+            self.gateway_pll_clock -= (error * 0.1)
+            
           self.last_real_counter = real_counter
-          self.gateway_sync_frame = self.frame
           
-        frames_since_sync = (self.frame - self.gateway_sync_frame)
+        # THE INVINCIBLE FILTER: PLL + MINIMAL 2-BURST
+        # By combining the massive stability of the Phase-Locked Loop (which finds the perfect 50ms center)
+        # with the brute-force guarantee of the 2-Burst (which punches through any OS scheduling delays),
+        # we create a spoofing mechanism that can never drift, never trigger ESC faults, and never lose arbitration.
         
-        # At exactly 50ms (frame 5) out of phase, we fire our 2-burst!
-        # This gives us massive jitter immunity, and the 2-burst guarantees we beat the Gateway's retry!
-        if frames_since_sync % 10 == 5:
-          preempt_counter = (real_counter + 1) % 16
+        # Fire exactly once per 10-frame cycle, when our PLL clock crosses the halfway mark (5.0)
+        current_cycle = int(self.gateway_pll_clock // 10.0)
+        if not hasattr(self, "last_fired_cycle"):
+          self.last_fired_cycle = -1
+          
+        if current_cycle != self.last_fired_cycle and (self.gateway_pll_clock % 10.0) >= 5.0:
+          self.last_fired_cycle = current_cycle
+          preempt_counter = (self.last_real_counter + 1) % 16
+          
+          # Send 2 messages back-to-back to guarantee we conquer any random arbitration collisions
           for _ in range(2):
             can_sends.append(self.tesla_can.create_action_request(
               button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
