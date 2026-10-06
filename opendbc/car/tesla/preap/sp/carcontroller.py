@@ -113,8 +113,9 @@ class PreAPCarController(CarControllerBase):
       # Pushed forward: Armed mode!
       self.auto_brights_enabled = True
       
-      jam_msg = dict(getattr(CS, "msg_stw_actn_req", {}))
-      if jam_msg:
+      stw_msg = getattr(CS, "msg_stw_actn_req", None)
+      if stw_msg is not None:
+        jam_msg = dict(stw_msg)
         jam_msg["HiBmLvr_Stat"] = 0
         real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
         
