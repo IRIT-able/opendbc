@@ -122,11 +122,11 @@ class PreAPCarController(CarControllerBase):
       # High exposure means the camera is compensating for darkness
       is_dark = exposure > 50.0
       no_lead = not CC.hudControl.leadVisible
-      moving_fast = True # CS.out.vEgo > 10.0 # TEMPORARY: 0 mph for garage testing
+      moving_fast = CS.out.vEgo > 10.0 # 22 mph
       
       if is_dark and no_lead and moving_fast:
         self.high_beam_state = True
-      elif not is_dark or not no_lead:
+      elif CS.out.vEgo < 5.0 or not is_dark or not no_lead:
         self.high_beam_state = False
         
     if self.frame % 10 == 0:
