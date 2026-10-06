@@ -105,9 +105,8 @@ class PreAPCarController(CarControllerBase):
     self.auto_brights_enabled = False
     self.high_beam_state = False
 
-    if not hasattr(self, "last_real_counter"):
-      self.last_real_counter = -1
-      self.gateway_sync_frame = 0
+    if not hasattr(self, "monotonic_offset"):
+      self.monotonic_offset = None
 
     if stalk == 1 and nap_conf.auto_brights:
       # Pushed forward: Armed mode!
@@ -119,29 +118,42 @@ class PreAPCarController(CarControllerBase):
         jam_msg["HiBmLvr_Stat"] = 0
         real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
         
-        if real_counter != self.last_real_counter:
-          self.last_real_counter = real_counter
-          self.gateway_sync_frame = self.frame
-          
-        # Hybrid Domination Shield + Continuous Feed
-        # 1. We must constantly feed the BCM at least 1 message per frame to prevent it from timing out.
-        # 2. Right around the expected Gateway transmission (frames 8, 9, 0, 1, 2), we increase to a BURST of 5.
-        # This provides maximum bus domination during the critical window to force the Gateway to retry,
-        # while keeping the BCM's watchdog perfectly happy during the quiet periods.
-        frames_since_sync = (self.frame - self.gateway_sync_frame) % 10
-        preempt_counter = (real_counter + 1) % 16
+        # We want to permanently stay exactly +3 ahead of the Gateway.
+        # If we just add +3 to real_counter, USB jitter causes stalls and the BCM resets.
+        # If we use a purely free-running clock, Linux drift causes us to cross the Gateway and strobe.
+        # Solution: Ultra-Low-Pass Monotonic Counter stream!
+        target_counter = real_counter + 3.0
         
-        num_msgs = 1
-        if frames_since_sync in [8, 9, 0, 1, 2]:
-          num_msgs = 5
+        if self.monotonic_offset is None:
+          # Initialize offset so that (frame/10) + offset == target_counter
+          self.monotonic_offset = target_counter - (self.frame / 10.0)
           
-        for _ in range(num_msgs):
-          can_sends.append(self.tesla_can.create_action_request(
-            button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
-            bus=CANBUS.party,
-            counter=preempt_counter,
-            msg_stw=jam_msg
-          ))
+        # Calculate what our smooth counter is right now
+        current_smooth = (self.frame / 10.0) + self.monotonic_offset
+        
+        # Calculate phase error between our smooth counter and the physical Gateway (+3)
+        diff = target_counter - current_smooth
+        # Handle 16-counter wrap-around math
+        if diff > 8: diff -= 16
+        elif diff < -8: diff += 16
+        
+        # SLOWLY pull our offset towards the Gateway to correct for long-term Linux clock drift
+        # A tiny factor of 0.01 completely absorbs all short-term USB jitter stalls!
+        self.monotonic_offset += diff * 0.01
+        
+        # Re-calculate our perfectly stable counter
+        current_smooth = (self.frame / 10.0) + self.monotonic_offset
+        preempt_counter = int(current_smooth) % 16
+        
+        # Send 1 message per frame continuously. 
+        # Because the stream never stalls, the BCM never times out.
+        # Because we are +3 ahead, the BCM permanently drops the Gateway as a duplicate.
+        can_sends.append(self.tesla_can.create_action_request(
+          button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
+          bus=CANBUS.party,
+          counter=preempt_counter,
+          msg_stw=jam_msg
+        ))
     elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
     else:
