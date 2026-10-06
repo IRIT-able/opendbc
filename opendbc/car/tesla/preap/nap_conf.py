@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
   'pedal_calib_max': 99.6,
   'pedal_calib_zero': 0.0,
   'pedal_calib_factor': 1.0,
+  'auto_brights': False,
   'radar_enabled': False,
   'radar_ignore_hw_fail': False,
   'radar_behind_nosecone': False,
@@ -201,6 +202,14 @@ class NAPConf:
   @use_pedal.setter
   def use_pedal(self, value):
     self._put_param_bool(NAPParamKeys.PEDAL_ENABLED, 'use_pedal', value)
+
+  @property
+  def auto_brights(self):
+    return self._get_param_bool(NAPParamKeys.AUTO_BRIGHTS, 'auto_brights')
+
+  @auto_brights.setter
+  def auto_brights(self, value):
+    self._put_param_bool(NAPParamKeys.AUTO_BRIGHTS, 'auto_brights', value)
 
   @property
   def radar_enabled(self):

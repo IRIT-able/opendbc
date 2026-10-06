@@ -40,6 +40,7 @@ class NAPParamKeys:
 
   # Advanced
   FORCE_PRE_AP = "NAPForcePreAP"
+  AUTO_BRIGHTS = "NAPAutoBrights"
 
 
 # Default values matching params_keys.h declarations
@@ -65,4 +66,5 @@ DEFAULTS = {
   NAPParamKeys.IBOOSTER_ENABLED: False,
   NAPParamKeys.BRAKE_FACTOR: 1.0,
   NAPParamKeys.FORCE_PRE_AP: False,
+  NAPParamKeys.AUTO_BRIGHTS: False,
 }

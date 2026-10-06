@@ -102,12 +102,17 @@ class PreAPCarController(CarControllerBase):
     # Auto Brights logic
     stalk = getattr(CS.out, "napHighBeamStalk", 0)
     
-    # 2 is pushed forward (Auto), 1 is pulled back (Flash), 0 is off
+    # 2 is pushed forward, 1 is pulled back (Flash), 0 is off
     if stalk == 1:
       self.high_beam_state = True
       self.auto_brights_enabled = False
     elif stalk == 2:
-      self.auto_brights_enabled = True
+      if nap_conf.auto_brights:
+        self.auto_brights_enabled = True
+      else:
+        # Native behavior: pushed forward = manual high beams ON
+        self.high_beam_state = True
+        self.auto_brights_enabled = False
     else:
       self.auto_brights_enabled = False
       self.high_beam_state = False
