@@ -111,9 +111,38 @@ class PreAPCarController(CarControllerBase):
 
     if stalk == 1 and nap_conf.auto_brights:
       # Pushed forward: Armed mode!
-      # We rely purely on DAS_bodyControls to override the BCM natively.
-      # No STW_ACTN_RQ spoofing is performed to avoid Stability Control CAN faults.
       self.auto_brights_enabled = True
+      
+      stw_msg = getattr(CS, "msg_stw_actn_req", None)
+      if stw_msg is not None:
+        jam_msg = dict(stw_msg)
+        jam_msg["HiBmLvr_Stat"] = 0
+        real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
+        
+        # Resync our baseline whenever a NEW physical message arrives
+        if real_counter != self.last_real_counter:
+          self.last_real_counter = real_counter
+          self.gateway_sync_frame = self.frame
+          
+        # THE 50MS PHASE-SHIFTED COUNTER DRAG
+        # We must pull the BCM's expected counter forward exactly +1 at a time.
+        # But we MUST do it BEFORE the Gateway transmits to prevent arbitration loss.
+        # By shifting our cycle increment 5 frames (50ms) early, we sit perfectly in the
+        # middle of the Gateway's physical transmission window. This gives us a massive
+        # +/- 50ms immunity to Linux USB jitter, guaranteeing we beat the Gateway to the BCM.
+        # And because we send exactly 1 message per frame, we will NOT trigger ESC faults!
+        frames_since_sync = self.frame - self.gateway_sync_frame
+        cycles = (frames_since_sync + 5) // 10
+        predicted_real = (self.last_real_counter + cycles) % 16
+        
+        preempt_counter = (predicted_real + 1) % 16
+        
+        can_sends.append(self.tesla_can.create_action_request(
+          button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
+          bus=CANBUS.party,
+          counter=preempt_counter,
+          msg_stw=jam_msg
+        ))
     elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
     else:
