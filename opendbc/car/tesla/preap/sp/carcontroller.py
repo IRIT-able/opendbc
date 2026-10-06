@@ -111,6 +111,46 @@ class PreAPCarController(CarControllerBase):
     if stalk == 1 and nap_conf.auto_brights:
       # Pushed forward: Armed mode!
       self.auto_brights_enabled = True
+      
+      stw_msg = getattr(CS, "msg_stw_actn_req", None)
+      if stw_msg is not None:
+        jam_msg = dict(stw_msg)
+        jam_msg["HiBmLvr_Stat"] = 0
+        real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
+        
+        # MINIMAL 2-BURST HACK
+        # We tried phase shifts (drifted), PLL (oscillated), and 20Hz (dropped by BCM).
+        # We tried DAS_bodyControls (ignored entirely).
+        # We tried 5-bursts (triggered ESC fault).
+        # This is the final frontier: A burst of EXACTLY 2 messages on the +1 counter.
+        # It's only 0.4ms long, which might slip under the ESC Babbling Idiot monitor!
+        # Because there are 2 messages, even if the first one perfectly collides with the
+        # Gateway and loses CAN arbitration, the second one queues up instantly and
+        # lands a microsecond later, permanently slamming the door on the Gateway!
+        # We send this at 10Hz, synchronized loosely to the Gateway.
+        
+        if not hasattr(self, "gateway_sync_frame"):
+          self.gateway_sync_frame = self.frame
+          self.last_real_counter = -1
+          
+        if real_counter != self.last_real_counter:
+          self.last_real_counter = real_counter
+          self.gateway_sync_frame = self.frame
+          
+        frames_since_sync = (self.frame - self.gateway_sync_frame)
+        
+        # At exactly 50ms (frame 5) out of phase, we fire our 2-burst!
+        # This gives us massive jitter immunity, and the 2-burst guarantees we beat the Gateway's retry!
+        if frames_since_sync % 10 == 5:
+          preempt_counter = (real_counter + 1) % 16
+          for _ in range(2):
+            can_sends.append(self.tesla_can.create_action_request(
+              button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
+              bus=CANBUS.party,
+              counter=preempt_counter,
+              msg_stw=jam_msg
+            ))
+            
     elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
     else:
