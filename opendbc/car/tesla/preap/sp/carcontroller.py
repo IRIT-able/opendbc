@@ -145,6 +145,7 @@ class PreAPCarController(CarControllerBase):
     elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
     else:
+      self.high_beam_state = False
       
     if self.auto_brights_enabled and self.sm is not None:
       exposure = self.sm['wideRoadCameraState'].exposureValPercent
