@@ -137,7 +137,7 @@ class TeslaCANPreAP(TeslaCANRaven):
       reason = 1   # HIGH_BEAM_OFF_REASON_MOVING_VISION_TARGET
     
     values = {
-      "DAS_headlightRequest": 1, # DAS_HEADLIGHT_REQUEST_ON (Tell BCM that headlights should be ON, just not high beams)
+      "DAS_headlightRequest": 0, # DAS_HEADLIGHT_REQUEST_NONE
       "DAS_hazardLightRequest": hazard,
       "DAS_wiperSpeed": 0,
       "DAS_turnIndicatorRequest": turn,

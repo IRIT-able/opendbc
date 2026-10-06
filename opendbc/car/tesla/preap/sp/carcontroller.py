@@ -111,34 +111,6 @@ class PreAPCarController(CarControllerBase):
     if stalk == 1 and nap_conf.auto_brights:
       # Pushed forward: Armed mode!
       self.auto_brights_enabled = True
-      
-      stw_msg = getattr(CS, "msg_stw_actn_req", None)
-      if stw_msg is not None:
-        jam_msg = dict(stw_msg)
-        jam_msg["HiBmLvr_Stat"] = 0
-        real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
-        
-        # On first initialization, sync to the Gateway
-        if self.freerun_counter == -1.0:
-          self.freerun_counter = real_counter + 1.0
-          
-        # ASYNCHRONOUS 20HZ FREE-RUNNING COUNTER
-        # The Gateway transmits at 10Hz (every 100ms). The BCM times out if it doesn't see a new message every ~100ms.
-        # By incrementing our counter by 0.2 every frame (10ms), we hit a new integer every 50ms (20Hz).
-        # We send 1 message per frame continuously to avoid ESC Babbling Idiot faults.
-        # Because we increment at 20Hz, we feed the BCM a new valid counter TWICE per Gateway cycle.
-        # Even if Linux clock drift causes one of our messages to perfectly collide with the Gateway and lose arbitration,
-        # our OTHER message successfully landed 50ms earlier!
-        # Thus, the BCM has ALWAYS already incremented its expected counter, making the Gateway's physical transmission permanently "old" and rejected.
-        self.freerun_counter = (self.freerun_counter + 0.2) % 16.0
-        preempt_counter = int(self.freerun_counter)
-        
-        can_sends.append(self.tesla_can.create_action_request(
-          button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
-          bus=CANBUS.party,
-          counter=preempt_counter,
-          msg_stw=jam_msg
-        ))
     elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
     else:
