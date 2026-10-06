@@ -134,11 +134,9 @@ class PreAPCarController(CarControllerBase):
         preempt_counter = (predicted_real + 1) % 16
         
         # Hybrid Domination Shield: Feed BCM continuously to prevent watchdog timeout.
-        # Burst 5 messages right around Gateway's expected transmit time to physically jam arbitration.
-        frames_since_sync = (self.frame - self.gateway_sync_frame) % 10
+        # We must ONLY send 1 message per frame! Bursting causes the ESC/SCCM safety
+        # monitors to throw a "Stability Control Disabled" Babbling Idiot CAN fault!
         num_msgs = 1
-        if frames_since_sync in [8, 9, 0, 1, 2]:
-          num_msgs = 5
           
         for _ in range(num_msgs):
           can_sends.append(self.tesla_can.create_action_request(
