@@ -111,40 +111,9 @@ class PreAPCarController(CarControllerBase):
 
     if stalk == 1 and nap_conf.auto_brights:
       # Pushed forward: Armed mode!
+      # We rely purely on DAS_bodyControls to override the BCM natively.
+      # No STW_ACTN_RQ spoofing is performed to avoid Stability Control CAN faults.
       self.auto_brights_enabled = True
-      
-      stw_msg = getattr(CS, "msg_stw_actn_req", None)
-      if stw_msg is not None:
-        jam_msg = dict(stw_msg)
-        jam_msg["HiBmLvr_Stat"] = 0
-        real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
-        
-        # Resync our baseline whenever a NEW physical message arrives
-        if real_counter != self.last_real_counter:
-          self.last_real_counter = real_counter
-          self.gateway_sync_frame = self.frame
-          
-        # USB Jitter stalls `real_counter`. If we just do (real_counter + 1), we stall and the BCM resets.
-        # But we know the Gateway transmits exactly every 10 frames.
-        # We can perfectly PREDICT the Gateway's current physical counter even if USB is delayed!
-        cycles_since_sync = (self.frame - self.gateway_sync_frame) // 10
-        predicted_real = (self.last_real_counter + cycles_since_sync) % 16
-        
-        # Always stay EXACTLY +1 ahead of the predicted Gateway counter
-        preempt_counter = (predicted_real + 1) % 16
-        
-        # Hybrid Domination Shield: Feed BCM continuously to prevent watchdog timeout.
-        # We must ONLY send 1 message per frame! Bursting causes the ESC/SCCM safety
-        # monitors to throw a "Stability Control Disabled" Babbling Idiot CAN fault!
-        num_msgs = 1
-          
-        for _ in range(num_msgs):
-          can_sends.append(self.tesla_can.create_action_request(
-            button_to_press=jam_msg.get("SpdCtrlLvr_Stat", 0),
-            bus=CANBUS.party,
-            counter=preempt_counter,
-            msg_stw=jam_msg
-          ))
     elif stalk == 1 or stalk == 2:
       self.high_beam_state = True
     else:
