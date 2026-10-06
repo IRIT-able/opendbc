@@ -131,6 +131,9 @@ class PreAPCarController(CarControllerBase):
       turn = int(CC.rightBlinker) * 2 + int(CC.leftBlinker)
       cntr = (self.frame // 10) % 16
       
+      # TEMPORARY TEST: BLINK HIGH BEAMS (1 SEC ON, 1 SEC OFF)
+      self.high_beam_state = (self.frame % 200) < 100
+      
       # If stalk is 2, and we are not forcing it, or we are forcing it
       # Or if auto brights is disabled, we just send False or True.
       # Wait, if we send None, create_body_controls_message will send 0.
