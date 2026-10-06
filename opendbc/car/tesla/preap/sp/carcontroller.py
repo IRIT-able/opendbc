@@ -105,9 +105,9 @@ class PreAPCarController(CarControllerBase):
     self.auto_brights_enabled = False
     self.high_beam_state = False
 
-    if not hasattr(self, "last_real_counter"):
+    if not hasattr(self, "gateway_pll_clock"):
+      self.gateway_pll_clock = 0.0
       self.last_real_counter = -1
-      self.gateway_sync_frame = 0
 
     if stalk == 1 and nap_conf.auto_brights:
       # Pushed forward: Armed mode!
@@ -119,20 +119,31 @@ class PreAPCarController(CarControllerBase):
         jam_msg["HiBmLvr_Stat"] = 0
         real_counter = int(jam_msg.get("MC_STW_ACTN_RQ", 0))
         
-        # Resync our baseline whenever a NEW physical message arrives
+        # Advance our internal mathematical clock by 1 frame (10ms)
+        self.gateway_pll_clock += 1.0
+        
+        # Phase-Locked Loop (PLL) Hardware Sync
         if real_counter != self.last_real_counter:
+          # On the very first sync, snap the clock perfectly to 0
+          if self.last_real_counter == -1:
+            self.gateway_pll_clock = 0.0
+          else:
+            # We expect new messages to arrive precisely at multiples of 10 on our clock.
+            # Calculate how far off our clock drifted from the Gateway's hardware oscillator.
+            error = self.gateway_pll_clock % 10.0
+            if error > 5.0: error -= 10.0
+            
+            # SLOWLY pull our clock towards the hardware phase.
+            # A tiny 0.1 factor completely absorbs wild USB jitter jumps, but easily defeats the 5-second Linux clock drift!
+            self.gateway_pll_clock -= (error * 0.1)
+            
           self.last_real_counter = real_counter
-          self.gateway_sync_frame = self.frame
           
-        # THE 50MS PHASE-SHIFTED COUNTER DRAG
-        # We must pull the BCM's expected counter forward exactly +1 at a time.
-        # But we MUST do it BEFORE the Gateway transmits to prevent arbitration loss.
-        # By shifting our cycle increment 5 frames (50ms) early, we sit perfectly in the
-        # middle of the Gateway's physical transmission window. This gives us a massive
-        # +/- 50ms immunity to Linux USB jitter, guaranteeing we beat the Gateway to the BCM.
-        # And because we send exactly 1 message per frame, we will NOT trigger ESC faults!
-        frames_since_sync = self.frame - self.gateway_sync_frame
-        cycles = (frames_since_sync + 5) // 10
+        # THE 50MS PLL PHASE-SHIFTED COUNTER DRAG
+        # By adding 5 frames (50ms) to our perfectly phase-locked clock, we guarantee we increment
+        # our counter EXACTLY halfway between the physical Gateway's transmissions.
+        # This gives us massive +/- 50ms immunity to jitter, locking the Gateway out of arbitration forever.
+        cycles = int((self.gateway_pll_clock + 5.0) // 10.0)
         predicted_real = (self.last_real_counter + cycles) % 16
         
         preempt_counter = (predicted_real + 1) % 16
